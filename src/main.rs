@@ -91,7 +91,7 @@ async fn get_notes_by_user(
     ) -> impl IntoResponse {
 
     //get the user object to receive its 'notes' array
-    let user = get_user(client.clone(), axum::extract::Path(user_email)).await.unwrap();
+    let user = get_user(client.clone(), axum::extract::Path(user_email)).await.expect("No User found by email");
     
     //create an array of ObjectIds from the _id Strings found in the user.notes attribute
     let mut note_ids: Vec<ObjectId> = Vec::new();
