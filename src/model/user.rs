@@ -4,25 +4,22 @@ use serde::{Serialize, Deserialize};
 use crate::model::folder::Folder;
 
 #[derive(Serialize, Deserialize)]
+#[allow(non_snake_case)]
 pub struct Prefs{
-        #[allow(non_snake_case)]
         editorWidth: String,
-        #[allow(non_snake_case)]
         editorPosition: String
 }
 
 
 #[derive(Serialize, Deserialize)]
+#[allow(non_snake_case)]
 pub struct User {
-
     
-
     pub _id: ObjectId,
     pub email: String,
     pub notes: Vec<String>,
     pub folders: Vec<Folder>,
     pub prefs: Prefs,
-    #[allow(non_snake_case)]
     pub lastNote: String,
 
 }

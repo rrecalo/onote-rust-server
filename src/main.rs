@@ -85,6 +85,32 @@ async fn get_user(
         }
     }
 }
+
+async fn get_user_by_email(
+    client: Extension<Client>,
+    Path(user_email): Path<String>
+    ) -> impl IntoResponse {
+
+    let collection = client.clone().database("notes-app").collection::<User>("users");
+    //match out break down the Result<User, Err> object into an Option<User>
+    let user = match collection.find_one(doc! {"email": user_email}, None).await{
+        Ok(document) => Ok(Json(document)),
+        /*
+        Ok(None) => {
+            println!("nothing found");
+            return None;
+        }
+        */
+        Err(e)=>{
+            dbg!(&e);
+            return Err(())
+
+        }
+    };
+    user
+
+}
+
 async fn get_notes_by_user(
     client: Extension<Client>,
     Path(user_email): Path<String>
@@ -131,6 +157,7 @@ async fn main() {
     //add app routes
     let app = Router::new().route("/", get(hello_world))
         .route("/get_all_notes", get(get_all_notes))
+        .route("/get_user_by_email/:user_email", get(get_user_by_email))
         .route("/get_notes_by_user/:user_email", get(get_notes_by_user)).layer(Extension(client));
     let server_port = std::env::var("PORT").expect("PORT must be set.");
     //serve locally on server_port from .env file
