@@ -5,34 +5,19 @@ use axum::{
     Router,
     Json
 };
-use std::fmt;
 use futures::stream::StreamExt;
 use dotenv::dotenv;
 //use hyper::{Response, header::Values};
 //use hyper::header::Values;
-use serde::{Serialize, Deserialize};
 
 use mongodb::{
     bson::doc,
-    bson::oid::ObjectId,
     Client,
     //Collection
 };
 
-#[derive(Serialize, Deserialize)]
-struct Note {
-    _id: ObjectId,
-    title: String,
-    text: String,
-    folder: String,
-    index: i32,
-}
-
-impl fmt::Display for Note {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result{
-        write!(f, "{0} | {1}", self._id, self.title)
-    }
-}
+mod model;
+use crate::model::note::Note;
 
 /* 
      * Returns ONE document from MongoDB
