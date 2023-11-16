@@ -931,6 +931,7 @@ dependencies = [
  "futures",
  "hyper",
  "mongodb",
+ "rand",
  "serde",
  "tokio",
  "tower",

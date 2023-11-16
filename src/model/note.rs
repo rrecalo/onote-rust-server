@@ -2,13 +2,13 @@ use std::fmt;
 use mongodb::bson::oid::ObjectId;
 use serde::{Serialize, Deserialize};
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct Note {
-    _id: ObjectId,
-    title: String,
-    text: String,
-    folder: String,
-    index: i32,
+    pub _id: ObjectId,
+    pub title: String,
+    pub text: String,
+    pub folder: String,
+    pub index: i32,
 }
 
 impl fmt::Display for Note {

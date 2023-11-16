@@ -1,7 +1,9 @@
 use std::str::FromStr;
-
+use std::fmt;
+use rand::Rng;
+use serde::Deserialize;
 use axum::{
-    routing::get,
+    routing::{get, put},
     response::IntoResponse,
     Extension,
     Router,
@@ -10,13 +12,10 @@ use axum::{
 };
 use futures::stream::StreamExt;
 use dotenv::dotenv;
-//use hyper::{Response, header::Values};
-//use hyper::header::Values;
 
 use mongodb::{
     bson::{doc, oid::ObjectId},
     Client,
-    //Collection
 };
 
 mod model;
@@ -144,6 +143,74 @@ async fn get_notes_by_user(
 
     }
 
+#[derive(Debug, serde::Serialize, Deserialize)]
+struct CreateNote{
+    email: String,
+    note_title: String,
+}
+
+impl std::fmt::Display for CreateNote {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> std::fmt::Result{
+        write!(f, "{0} | {1}", self.email, self.note_title)
+    }
+}
+
+fn random_note_name() -> String {
+        let mut rng = rand::thread_rng();
+        let nums: Vec<u8> = (0..4).map(|_| rng.gen_range(0..=9)).collect();
+        let result = format!("NewNote{0}{1}{2}{3}", nums[0], nums[1], nums[2], nums[3]);
+
+        result
+    }
+
+async fn create_user_note(
+    client: Extension<Client>,
+    Json(payload): Json<CreateNote>
+    ) -> impl IntoResponse {
+   
+    let new_note_title = match &payload.note_title.is_empty() {
+        true => random_note_name(), 
+        false => String::from(payload.note_title)
+    };
+
+    let user_email = payload.email;
+
+    //println!("{}", new_note_title);
+    
+    let new_note = Note {
+        _id: ObjectId::new(),
+        title: new_note_title.clone(),
+        text: String::from(""),
+        folder: String::from(""),
+        index: -1, 
+    };
+    
+    let inserted = match client.clone().database("notes-app").collection("notes")
+        .insert_one(new_note, None).await {
+            Ok(document) => Ok(Json(document)),
+            Err(e) => {dbg!(e);Err(())}
+        };
+    match &inserted {
+        Ok(json) => {
+            
+            let _update = match client.clone().database("notes-app").collection::<User>("users")
+                .update_one(doc! {"email": user_email}, 
+                            doc! { "$push": {"notes" : &json.0.inserted_id.as_object_id().unwrap().to_hex() } }, None).await {
+                    Ok(document) => {
+                        //println!("{}", document.modified_count);
+                        Ok(Json(document))
+                    }
+                    Err(e) => {dbg!(e); Err(())}
+                };
+            
+            //println!("{}",json.0.inserted_id);
+        }
+        
+        Err(_) => println!("err!"),
+    };
+    inserted
+}
+
 #[tokio::main]
 async fn main() {
     dotenv().ok();
@@ -158,7 +225,9 @@ async fn main() {
     let app = Router::new().route("/", get(hello_world))
         .route("/get_all_notes", get(get_all_notes))
         .route("/get_user_by_email/:user_email", get(get_user_by_email))
-        .route("/get_notes_by_user/:user_email", get(get_notes_by_user)).layer(Extension(client));
+        .route("/get_notes_by_user/:user_email", get(get_notes_by_user))
+        .route("/create_user_note", put(create_user_note))
+        .layer(Extension(client));
     let server_port = std::env::var("PORT").expect("PORT must be set.");
     //serve locally on server_port from .env file
     axum::Server::bind(&("0.0.0.0:".to_owned()+&server_port).parse().unwrap())
