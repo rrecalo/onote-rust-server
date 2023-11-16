@@ -308,6 +308,26 @@ async fn delete_user_folder(
     //println!("Deleted {0} folder from user : {1}", deleted_folder_from_user.modified_count, payload.email);    
     Json(deleted_folder_from_user)
 }
+
+#[derive(Deserialize)]
+struct UpdateUserLastNote {
+    email: String,
+    lastNote: String,
+}
+
+async fn update_user_last_note(
+    client: Extension<Client>,
+    Json(payload): Json<UpdateUserLastNote>
+    ) -> impl IntoResponse {
+    
+    let users = client.clone().database("notes-app").collection::<User>("users");
+    let update = users.update_one(doc! {"email": &payload.email}, doc! {"$set":{"lastNote": &payload.lastNote}}, None).await.unwrap();
+
+    //println!("Update {0} {1}'s lastNote to {2}", update.modified_count, payload.email, payload.lastNote);
+
+    Json(update)
+}
+
 #[tokio::main]
 async fn main() {
     dotenv().ok();
@@ -326,7 +346,8 @@ async fn main() {
         .route("/create_user_note", put(create_user_note))
         .route("/create_user_folder", put(create_user_folder))
         .route("/delete_user_note", delete(delete_user_note))
-        .route("/delete_user_folder",put(delete_user_folder))
+        .route("/delete_user_folder", put(delete_user_folder))
+        .route("/update_user_last_note", put(update_user_last_note))
         .layer(Extension(client));
     let server_port = std::env::var("PORT").expect("PORT must be set.");
     //serve locally on server_port from .env file
