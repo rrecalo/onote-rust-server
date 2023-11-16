@@ -1,21 +1,21 @@
 use std::str::FromStr;
 use std::fmt;
+use std::time::Instant;
 use rand::Rng;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use axum::{
-    routing::{get, put, delete},
+    routing::{get, put, post, delete},
     response::IntoResponse,
     Extension,
     Router,
-    extract::Path,
+    extract::{Path, Query},
     Json
 };
 use futures::stream::StreamExt;
 use dotenv::dotenv;
-use http::Method;
 
 use mongodb::{
-    bson::{doc, oid::ObjectId, Bson, Document},
+    bson::{doc, oid::ObjectId, Bson},
     Client,
 };
 
@@ -115,11 +115,20 @@ async fn get_user_by_email(
 
 }
 
+#[derive(Serialize, Deserialize)]
+pub struct NoteInterface {
+    pub _id: String,
+    pub title: String,
+    pub text: String,
+    pub folder: String,
+    pub index: i32,
+}
 async fn get_notes_by_user(
     client: Extension<Client>,
     Path(user_email): Path<String>
     ) -> impl IntoResponse {
 
+    //let start = Instant::now();
     //get the user object to receive its 'notes' array
     let user = get_user(client.clone(), axum::extract::Path(user_email)).await.expect("No User found by email");
     
@@ -136,7 +145,20 @@ async fn get_notes_by_user(
         .filter_map(|doc| async move { doc.ok() })
         .collect()
         .await;
-   
+  
+    let mut notes_vec: Vec<NoteInterface> = Vec::new();
+
+    for note in v.iter(){
+        notes_vec.push(
+            NoteInterface{
+                _id: note._id.to_hex(),
+                title: note.title.clone(),
+                text: note.text.clone(),
+                folder: note.folder.clone(),
+                index: note.index.clone()
+            }
+            );
+    }
 
 
     /*
@@ -146,7 +168,10 @@ async fn get_notes_by_user(
     }
     */
 
-    Json(v)
+    //let end = Instant::now();
+    //println!("{}", (end-start).as_millis());
+
+    Json(notes_vec)
 
     }
 
@@ -191,6 +216,7 @@ async fn create_user_note(
         folder: String::from(""),
         index: -1, 
     };
+
     
     let inserted = match client.clone().database("notes-app").collection("notes")
         .insert_one(new_note, None).await {
@@ -215,7 +241,14 @@ async fn create_user_note(
         
         Err(_) => println!("err!"),
     };
-    inserted
+    Json(NoteInterface{
+        _id: inserted.unwrap().inserted_id.as_object_id().unwrap().to_hex(),
+        title: new_note_title.clone(),
+        text: String::from(""),
+        folder: String::from(""),
+        index: -1
+    })
+    //inserted
 }
 
 #[derive(Deserialize)]
@@ -226,7 +259,7 @@ struct DeleteNote{
 
 async fn delete_user_note(
     client: Extension<Client>,
-    Json(payload): Json<DeleteNote>
+    Query(payload): Query<DeleteNote>
     ) -> impl IntoResponse{
     
     let notes = client.clone().database("notes-app").collection::<Note>("notes");
@@ -256,16 +289,18 @@ async fn create_user_folder(
 
     let users = client.clone().database("notes-app").collection::<User>("users");
 
-    let folder_update = users.update_one(doc! {"email": &payload.email},
-                            doc! {"$push": {"folders":
-                            Bson::Document(doc!{
+    let new_folder = Bson::Document(doc!{
                                 "_id": ObjectId::new().to_string(),
                                 "name": payload.folder_name,
                                 "order": payload.folder_index,
                                 "opened": true,
-                            })
-                        }}, None).await.unwrap();
-    Json(folder_update)
+                            });
+
+
+    let _folder_update = users.update_one(doc! {"email": &payload.email},
+                            doc! {"$push": {"folders": &new_folder
+                                                    }}, None).await.unwrap();
+    Json(new_folder)
 }
 
 
@@ -317,7 +352,7 @@ async fn delete_user_folder(
 #[derive(Deserialize)]
 struct UpdateUserLastNote {
     email: String,
-    lastNote: String,
+    last_note: String,
 }
 
 async fn update_user_last_note(
@@ -326,7 +361,7 @@ async fn update_user_last_note(
     ) -> impl IntoResponse {
     
     let users = client.clone().database("notes-app").collection::<User>("users");
-    let update = users.update_one(doc! {"email": &payload.email}, doc! {"$set":{"lastNote": &payload.lastNote}}, None).await.unwrap();
+    let update = users.update_one(doc! {"email": &payload.email}, doc! {"$set":{"lastNote": &payload.last_note}}, None).await.unwrap();
 
     //println!("Update {0} {1}'s lastNote to {2}", update.modified_count, payload.email, payload.lastNote);
 
@@ -462,7 +497,7 @@ async fn main() {
         .route("/get_all_notes", get(get_all_notes))
         .route("/get_user_by_email/:user_email", get(get_user_by_email))
         .route("/get_notes_by_user/:user_email", get(get_notes_by_user))
-        .route("/create_user_note", put(create_user_note))
+        .route("/create_user_note", post(create_user_note))
         .route("/create_user_folder", put(create_user_folder))
         .route("/delete_user_note", delete(delete_user_note))
         .route("/delete_user_folder", put(delete_user_folder))
