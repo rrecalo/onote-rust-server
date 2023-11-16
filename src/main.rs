@@ -127,11 +127,13 @@ async fn get_notes_by_user(
     //query to get all the notes that are within the array of ObjectIds we just made
     let collection = client.clone().database("notes-app").collection::<Note>("notes");
     let cursor = collection.find(doc! {"_id": { "$in" : note_ids} }, None).await;
-    let v: Vec<Note> = cursor.expect("REASON")
+    let v: Vec<Note> = cursor.expect("reason")
         .filter_map(|doc| async move { doc.ok() })
         .collect()
         .await;
    
+
+
     /*
      * Debug
     for item in v.iter() {
@@ -229,12 +231,83 @@ async fn delete_user_note(
    
     let users = client.clone().database("notes-app").collection::<User>("users");
     //println!("{}", &payload._id);
-    let delete_from_user = users.find_one_and_update(doc! {"email": payload.email},
+    let _delete_from_user = users.find_one_and_update(doc! {"email": payload.email},
                                 doc! {"$pull" : {"notes": payload._id.to_string()}}, None).await;
     //println!("{}", delete_from_user.unwrap().unwrap());
     Json(delete_result.unwrap())
 }
 
+#[derive(Deserialize)]
+struct CreateFolder{
+    email: String,
+    folder_index: i32,
+    folder_name: String,
+}
+
+async fn create_user_folder(
+    client: Extension<Client>,
+    Json(payload): Json<CreateFolder>
+    ) -> impl IntoResponse{
+
+    let users = client.clone().database("notes-app").collection::<User>("users");
+
+    let folder_update = users.update_one(doc! {"email": &payload.email},
+                            doc! {"$push": {"folders":
+                            Bson::Document(doc!{
+                                "_id": ObjectId::new().to_string(),
+                                "name": payload.folder_name,
+                                "order": payload.folder_index,
+                                "opened": true,
+                            })
+                        }}, None).await.unwrap();
+    Json(folder_update)
+}
+
+
+#[derive(Deserialize)]
+struct DeleteFolder{
+    email: String,
+    _id: ObjectId
+}
+
+async fn delete_user_folder(
+    client: Extension<Client>,
+    Json(payload): Json<DeleteFolder>
+    ) -> impl IntoResponse{
+
+    let notes = client.clone().database("notes-app").collection::<Note>("notes");
+    let cursor = notes.find(doc! {"folder": payload._id.to_string() }, None).await;
+    //store all the notes with the match folder id in a vec
+    let v: Vec<Note> = cursor.expect("reason")
+        .filter_map(|doc| async move { doc.ok() })
+        .collect()
+        .await;
+
+    //make a new vec and collect JUST the _id from each note as a String
+    // -- Bson won't be able to serialize our Vec<Note> and thus we wouldn't be able to use the
+    // powerful $in operator.
+    let mut id_vec: Vec<String> = Vec::new();
+    for item in v.iter(){
+        id_vec.push(item._id.to_string());
+    }
+
+    //delete the notes from the 'notes' collection
+    let _deleted_note_count = notes.delete_many(doc! {"folder" : payload._id.to_string()}, None).await.unwrap();
+    //println!("deleted {} notes", deleted_note_count.deleted_count);
+
+    let users = client.clone().database("notes-app").collection::<User>("users");
+    //delete the notes from the users' 'notes' attribute
+    let _deleted_notes_from_user = users.update_one(doc! {"email":&payload.email},
+    doc! {"$pull":{"notes": {"$in":id_vec}}}, None).await.unwrap();
+    //println!("{}", deleted_notes_from_user.modified_count);
+
+    //remove the folder from the users 'folders' attribute
+    let deleted_folder_from_user = users.update_one(doc! {"email":&payload.email},
+                                doc!{"$pull":{"folders": {"_id":payload._id.to_string()}}
+                                                            }, None).await.unwrap();
+    //println!("Deleted {0} folder from user : {1}", deleted_folder_from_user.modified_count, payload.email);    
+    Json(deleted_folder_from_user)
+}
 #[tokio::main]
 async fn main() {
     dotenv().ok();
@@ -251,7 +324,9 @@ async fn main() {
         .route("/get_user_by_email/:user_email", get(get_user_by_email))
         .route("/get_notes_by_user/:user_email", get(get_notes_by_user))
         .route("/create_user_note", put(create_user_note))
+        .route("/create_user_folder", put(create_user_folder))
         .route("/delete_user_note", delete(delete_user_note))
+        .route("/delete_user_folder",put(delete_user_folder))
         .layer(Extension(client));
     let server_port = std::env::var("PORT").expect("PORT must be set.");
     //serve locally on server_port from .env file
