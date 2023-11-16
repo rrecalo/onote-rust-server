@@ -3,7 +3,7 @@ use std::fmt;
 use rand::Rng;
 use serde::Deserialize;
 use axum::{
-    routing::{get, put},
+    routing::{get, put, delete},
     response::IntoResponse,
     Extension,
     Router,
@@ -14,7 +14,7 @@ use futures::stream::StreamExt;
 use dotenv::dotenv;
 
 use mongodb::{
-    bson::{doc, oid::ObjectId},
+    bson::{doc, oid::ObjectId, Bson},
     Client,
 };
 
@@ -211,6 +211,30 @@ async fn create_user_note(
     inserted
 }
 
+#[derive(Deserialize)]
+struct DeleteNote{
+    email: String,
+    _id: ObjectId
+}
+
+async fn delete_user_note(
+    client: Extension<Client>,
+    Json(payload): Json<DeleteNote>
+    ) -> impl IntoResponse{
+    
+    let notes = client.clone().database("notes-app").collection::<Note>("notes");
+    //let id = Bson::ObjectId(ObjectId::from_str(&payload._id).unwrap());
+    let id = Bson::ObjectId(payload._id.clone());
+    let delete_result = notes.delete_one(doc! {"_id": id}, None).await;
+   
+    let users = client.clone().database("notes-app").collection::<User>("users");
+    //println!("{}", &payload._id);
+    let delete_from_user = users.find_one_and_update(doc! {"email": payload.email},
+                                doc! {"$pull" : {"notes": payload._id.to_string()}}, None).await;
+    //println!("{}", delete_from_user.unwrap().unwrap());
+    Json(delete_result.unwrap())
+}
+
 #[tokio::main]
 async fn main() {
     dotenv().ok();
@@ -227,6 +251,7 @@ async fn main() {
         .route("/get_user_by_email/:user_email", get(get_user_by_email))
         .route("/get_notes_by_user/:user_email", get(get_notes_by_user))
         .route("/create_user_note", put(create_user_note))
+        .route("/delete_user_note", delete(delete_user_note))
         .layer(Extension(client));
     let server_port = std::env::var("PORT").expect("PORT must be set.");
     //serve locally on server_port from .env file
