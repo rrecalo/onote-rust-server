@@ -353,6 +353,29 @@ async fn update_user_prefs(
     Json(update)
 }
 
+#[derive(Deserialize)]
+struct UpdateNote{
+    _id: ObjectId,
+    title: String,
+    text: String,
+    folder: String,
+    index: i32,
+       
+}
+
+async fn update_note(
+    client: Extension<Client>,
+    Json(payload): Json<UpdateNote>
+    ) -> impl IntoResponse{
+    
+    let notes = client.clone().database("notes-app").collection::<Note>("notes");
+
+    let update = notes.update_one(doc!{"_id": payload._id}, 
+                     doc!{"$set":{"title":payload.title, "text":payload.text, "folder": payload.folder, "index": payload.index}}, None).await.unwrap();
+
+    Json(update)
+}
+
 #[tokio::main]
 async fn main() {
     dotenv().ok();
@@ -374,6 +397,7 @@ async fn main() {
         .route("/delete_user_folder", put(delete_user_folder))
         .route("/update_user_last_note", put(update_user_last_note))
         .route("/update_user_prefs", put(update_user_prefs))
+        .route("/update_note", put(update_note))
         .layer(Extension(client));
     let server_port = std::env::var("PORT").expect("PORT must be set.");
     //serve locally on server_port from .env file
