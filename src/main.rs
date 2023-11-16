@@ -12,14 +12,19 @@ use axum::{
 };
 use futures::stream::StreamExt;
 use dotenv::dotenv;
+use http::Method;
 
 use mongodb::{
-    bson::{doc, oid::ObjectId, Bson},
+    bson::{doc, oid::ObjectId, Bson, Document},
     Client,
 };
 
+use tower::ServiceBuilder;
+use tower_http::cors::{Any, CorsLayer};
+
+
 mod model;
-use crate::model::{note::Note, user::User};
+use crate::model::{note::Note, user::User, folder::Folder};
 
 /* This code block returns ONE document from MongoDB
     let notes = match collection.find_one(doc! {}, none).await{
@@ -405,6 +410,38 @@ async fn update_user_folder(
 
 }
 
+#[derive(Deserialize)]
+struct UpdateUserFolders{
+    email: String,
+    folders: Vec<Folder>,
+}
+async fn update_all_user_folders(
+    client: Extension<Client>,
+    Json(payload): Json<UpdateUserFolders>
+    ) -> impl IntoResponse{
+
+    let users = client.clone().database("notes-app").collection::<User>("users");
+
+    let mut folder_vec: Vec<Bson> = Vec::new();
+    
+    for folder in payload.folders.iter(){
+        //print!("{} | ", folder.name);
+        folder_vec.push(
+            Bson::Document(doc!{
+                "_id": &folder._id,
+                "name": &folder.name,
+                "order": &folder.order,
+                "opened": &folder.opened
+            }));
+    }
+
+    let update = users.update_one(doc! {"email":payload.email},
+        doc!{"$set":{"folders":  folder_vec}}, None).await.unwrap();
+
+    Json(update)
+}
+
+
 #[tokio::main]
 async fn main() {
     dotenv().ok();
@@ -414,6 +451,11 @@ async fn main() {
         let client = Client::with_uri_str(uri)
         .await
         .expect("Failed to Establish MongoDB Connection");
+
+    let cors = CorsLayer::new()
+        .allow_methods(Any)
+        .allow_headers(Any)
+        .allow_origin(Any);
 
     //add app routes
     let app = Router::new().route("/", get(hello_world))
@@ -428,6 +470,12 @@ async fn main() {
         .route("/update_user_prefs", put(update_user_prefs))
         .route("/update_note", put(update_note))
         .route("/update_user_folder", put(update_user_folder))
+        .route("/update_all_user_folders", put(update_all_user_folders))
+        .layer(
+            ServiceBuilder::new()
+                .layer(cors)
+                .into_inner(),
+        )
         .layer(Extension(client));
     let server_port = std::env::var("PORT").expect("PORT must be set.");
     //serve locally on server_port from .env file
