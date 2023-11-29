@@ -3,7 +3,7 @@ use std::fmt;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 use axum::{
-    response::IntoResponse,
+    response::{IntoResponse, sse::Event},
     Extension,
     extract::{Path, Query},
     Json
@@ -42,6 +42,23 @@ pub async fn get_all_notes(
     Json(v)
 
     }
+pub async fn get_note_contents(
+    client: Extension<Client>,
+    note_id: String    
+    ) -> Event{
+
+    let collection = client.clone().database("notes-app").collection::<Note>("notes");
+    //match out break down the Result<User, Err> object into an Option<User>
+    let o_id: ObjectId = ObjectId::from_str(note_id.as_str()).unwrap();
+    let note = collection.find_one(doc! {"_id": o_id}, None).await;
+    
+    match note {
+        Ok(note) => {
+            Event::default().data(note.unwrap().text)
+        }
+        Err(_) => Event::default().data("Error"),
+    }
+}
 
 pub async fn get_user(
     client: Extension<Client>,

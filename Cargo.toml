@@ -7,16 +7,15 @@ edition = "2021"
 
 [dependencies]
 axum = "0.6.20"
+axum-extra = { version = "0.9.0", features = ["typed-header"] }
 dotenv = "0.15.0"
 futures = "0.3.29"
 http = "1.0.0"
 hyper = { version = "0.14.27", features = ["full"] }
+mongodb = "2.7.1"
 rand = "0.8.5"
 serde = {version="1.0.192", features = ["derive"]  } 
 tokio = {version="1.34.0", features = ["full"] }
+tokio-stream = "0.1.14"
 tower = "0.4.13"
 tower-http = {version="0.4.4", features=["full"]}
-
-[dependencies.mongodb]
-version = "2.7.1"
-features = ["tokio-runtime"]

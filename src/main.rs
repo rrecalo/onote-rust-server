@@ -1,7 +1,11 @@
 use axum::{
     routing::{get, put, post, delete},
+    extract::Path,
     Extension,
     Router,
+    response::sse::{Event, Sse, KeepAlive},
+
+    
 };
 use dotenv::dotenv;
 
@@ -13,23 +17,30 @@ use tower_http::cors::{Any, CorsLayer};
 mod model;
 mod handlers;
 use crate::handlers::handlers::*;
+use futures::stream::{self, Stream};
+use std::{convert::Infallible, time::Duration};
+use tokio_stream::StreamExt as _;
 
-/* This code block returns ONE document from MongoDB
-    let notes = match collection.find_one(doc! {}, none).await{
-        ok(some(document)) => ok(json(document)),
-        ok(none) => {
-            println!("nothing found");
-            return err(())
-        }
-        err(e)=>{
-            dbg!(&e);
-            return err(())
+async fn sse_handler(
+    client: Extension<Client>,
+    Path(note_id): Path<String>
+    ) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
+    // A `Stream` that repeats an event every second
+    let stream = stream::unfold((), move |()| {  
+        let c = client.clone();
+        let _id = note_id.clone();
+        async move { Some((get_note_contents(c, _id).await, ())) }
+        })
+        .map(Ok)
+        .throttle(Duration::from_millis(100));
 
-        }
-    };
-    return note;
-    */
-
+    Sse::new(stream).keep_alive(
+        //KeepAlive::default()
+        axum::response::sse::KeepAlive::new().
+        interval(Duration::from_secs(1))
+        .text("keep-alive-text"),
+        )
+}
 
 #[tokio::main]
 async fn main() {
@@ -60,6 +71,7 @@ async fn main() {
         .route("/update_note", put(update_note))
         .route("/update_user_folder", put(update_user_folder))
         .route("/update_all_user_folders", put(update_all_user_folders))
+        .route("/collaborate/:note_id", get(sse_handler))
         .layer(
             ServiceBuilder::new()
                 .layer(cors)
